@@ -375,6 +375,20 @@ select.inp{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.
   padding:12px;font-size:12.5px;color:var(--gold-deep);line-height:1.45;text-align:left;
   display:flex;gap:9px;align-items:flex-start;margin-top:16px}
 
+/* register / visitor */
+.authhead{display:flex;align-items:center;gap:8px;margin:0 0 14px;text-align:left}
+.authhead button{background:none;border:0;color:var(--blue);cursor:pointer;display:flex;
+  align-items:center;padding:4px;margin-left:-4px}
+.authhead h2{margin:0;font-size:19px;font-weight:800;color:var(--blue)}
+.fieldlabel{text-align:left;font-size:12.5px;font-weight:600;color:var(--blue);margin-bottom:6px}
+.tickbox{display:flex;gap:10px;align-items:flex-start;background:#fff;border:1px solid var(--line);
+  border-radius:12px;padding:12px;text-align:left;margin-bottom:16px}
+.tickbox.on{background:var(--gold-soft);border-color:var(--gold-mid)}
+.tickbox input{width:18px;height:18px;margin:1px 0 0;flex:0 0 auto;accent-color:var(--blue);cursor:pointer}
+.tickbox .tx{font-size:13px;line-height:1.45;flex:1;min-width:0}
+.tickbox .tx b{display:block;font-size:13.5px;font-weight:700}
+.tickbox .tx a{color:var(--blue);font-weight:700}
+
 @media(min-width:760px){
   .page{max-width:720px;margin:0 auto}
   .sheet{left:50%;transform:translate(-50%,100%);width:560px;max-width:100%;border-radius:18px 18px 0 0}
@@ -463,7 +477,7 @@ const CFG = {
   appName     : 'Lions Business Network',
   tagline     : 'Referral & Business Exchange for Lions Clubs',
   termsUrl    : 'https://lionsbusinessnetwork.in/terms',
-  version     : '1.0.3-web'
+  version     : '1.0.4-web'
 };
 
 const sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey, {
@@ -617,6 +631,14 @@ function confirmDlg(title, message, confirmLabel, destructive){
     wrap.addEventListener('click', onCancel);
     wrap.classList.add('on');
   });
+}
+
+/* a one-button notice — same dialog, cancel hidden */
+function infoDlg(title, message, label){
+  const c = $('#dlgWrap .cancel');
+  c.hidden = true;
+  return confirmDlg(title, message, label || 'Done', false)
+    .then(v => { c.hidden = false; return v; });
 }
 
 /* bottom sheet */
@@ -2651,6 +2673,8 @@ function openAddSheet(){
 const LoginUI = { handle:null, typed:'', busy:false, showPw:false };
 
 function renderLogin(){
+  if(AuthUI.screen === 'register'){ renderRegister(); return; }
+  if(AuthUI.screen === 'visitor'){ renderVisitor(); return; }
   const box = $('#login');
   const club = S.selectedClub;
   let h = '<div class="login-in">';
@@ -2695,10 +2719,15 @@ function renderLogin(){
       '<button class="pwtoggle" data-act="login-showpw">'+(LoginUI.showPw?'Hide':'Show')+'</button></div>';
     h += '<button class="btn" id="loginBtn" data-act="login">'+
       (LoginUI.busy ? '<span class="spinner sm white"></span>' : 'Login as Member')+'</button>';
-    h += '<div class="divider"></div>';
-    h += '<div class="centre" style="font-size:13px;color:var(--muted)">Registration, visitor sign-in and '+
-      'new-club signup are handled in the mobile app for now.</div>';
   }
+
+  h += '<div class="divider"></div>';
+  h += '<button class="btn ghost" data-act="auth-register">'+
+    '<span class="mi s18">person_add</span>Register as a Member</button>';
+  h += '<div class="centre"><button class="btn link" data-act="auth-visitor">'+
+    'Visited a meeting? Sign in as a visitor</button></div>';
+  h += '<div class="centre" style="font-size:12px;color:var(--muted);margin-top:2px">'+
+    'New-club signup is still handled in the mobile app.</div>';
 
   if(S.offline){
     h += '<p style="margin-top:12px;font-size:12.5px;color:var(--red)">No connection. You need to be online to sign in.</p>';
@@ -2741,6 +2770,192 @@ function renderSuggest(){
     (m.company ? '<span class="cp" style="display:block">'+esc(m.company)+'</span>' : '')+
     '</span></button>').join('');
 }
+/* ==========================================================================
+   Register a member / sign in as a visitor
+   ========================================================================== */
+/* Terms of Use — kept in the app, not behind a link, so it works with no data. */
+const TERMS_UPDATED = 'Last updated 27 August 2026';
+const TERMS = [
+['1. What this app is',
+ 'Lions Business Network is a private membership app for Lions Clubs. It records referrals passed between members, business done, one-to-one meetings, meeting attendance, visitors and club accounts. You can only use it as an approved member of a club registered on the platform.'],
+['2. Joining',
+ 'You choose your club and provide your name, mobile number, email address and business details, and optionally a photograph, date of birth, wedding anniversary, blood group and address.\n\nYour registration is pending until an officer of your club approves it. Your club decides who joins; the app does not. Give accurate information, keep it up to date, and do not register on behalf of someone else or hold more than one account in the same club.'],
+['3. What other people can see',
+ 'Other approved members of your club can see your name, business, business category, mobile number, email address and photograph; your date of birth and anniversary if you give them; the referrals you give and receive and the business recorded against them; your one-to-one meetings; your attendance record; and anything you post on the Ask and Give boards.\n\nYour name, business, business category, mobile number, email address and photograph are also visible to approved members of other clubs through the network directory. That is the point of the app — it exists so members can find and refer business to each other.\n\nYour password is never visible to anyone, including club officers.'],
+['4. What you agree to do',
+ 'Use contact details for legitimate business between members — not for bulk marketing, spam or automated messaging. Do not share another member’s details outside the club without their permission. Record referrals and business values honestly, as they are used for club recognition and reporting. Do not post anything unlawful, misleading or offensive. Keep your password to yourself.'],
+['5. Money recorded in the app',
+ 'Referral values, thank-you notes and club accounts are records kept for the club’s own purposes. They are not invoices, receipts, contracts or proof of payment, and the app is not a party to any business you do with another member. Any dispute over work or money is between you and that member.'],
+['6. Attendance',
+ 'Clubs may record attendance and apply their own rules about absences, leave and rejoining fees. Those rules belong to your club, not to the app. The app sends reminders by email on your club’s behalf.'],
+['7. Subscription',
+ 'Clubs pay a subscription per approved member per month. A club that does not pay loses access for all of its members until it does. Individual members are not charged by the app. Payments are handled by a third-party provider; card and bank details are never stored by the app.'],
+['8. Leaving',
+ 'You may ask your club officer to remove you at any time, after which you can no longer sign in. Records of referrals, business, meetings and attendance you were part of remain in the club’s records, because they form part of another member’s history and of the club’s accounts.'],
+['9. Your data',
+ 'Data is stored on servers operated by our hosting provider. We take reasonable measures to protect it, but no system is completely secure. To ask what is held about you, to correct it, or to raise a concern, contact your club officer.'],
+['10. Availability and liability',
+ 'The app is provided as it is. We do not promise it will always be available or free of faults, and we are not liable for business lost, referrals missed, or decisions taken on the basis of information in the app. Nothing here limits liability that cannot be limited by law.'],
+['11. Changes',
+ 'These terms may change. If they change materially you will be asked to accept the new version when you next sign in.']
+];
+function showTermsSheet(){
+  const body = TERMS.map(t =>
+    '<div style="margin-bottom:16px">'+
+    '<div style="font-size:14px;font-weight:800;color:var(--blue);margin-bottom:5px">'+esc(t[0])+'</div>'+
+    t[1].split('\n\n').map(par =>
+      '<p style="margin:0 0 8px;font-size:13.5px;line-height:1.55">'+esc(par)+'</p>').join('')+
+    '</div>').join('');
+  openSheet('Terms of Use',
+    '<div style="font-size:11.5px;color:var(--muted);margin-bottom:14px">'+esc(TERMS_UPDATED)+'</div>'+
+    body+'<button class="btn" data-close="1">Close</button>');
+}
+
+
+const AuthUI = { screen:'login', showPw:false };
+
+function authHeadHTML(title, sub){
+  return '<div class="authhead"><button type="button" data-act="auth-back" aria-label="Back">'+
+    '<span class="mi">arrow_back</span></button><h2>'+esc(title)+'</h2></div>'+
+    (sub ? '<div class="help" style="margin:-6px 0 16px">'+esc(sub)+'</div>' : '');
+}
+function clubOptionsHTML(selectedId, placeholder){
+  return '<option value="">'+esc(S.clubs.length ? placeholder : 'Loading clubs…')+'</option>'+
+    S.clubs.map(c => '<option value="'+esc(c.id)+'"'+(c.id === selectedId ? ' selected' : '')+'>'+
+      esc(c.label)+'</option>').join('');
+}
+function verticalOptionsHTML(){
+  const names = verticalNames();
+  if(!names.length) return '<option value="">No verticals loaded — reconnect and try again</option>';
+  return '<option value="">Select your business vertical</option>'+
+    names.map(v => '<option value="'+esc(v)+'">'+esc(v)+'</option>').join('');
+}
+function inviterOptionsHTML(clubId){
+  if(!clubId) return '<option value="">Choose the club first</option>';
+  const list = S.loginDirectory.filter(m => String(m.club_id) === String(clubId))
+    .slice().sort((a,b) => String(a.name||'').localeCompare(String(b.name||'')));
+  if(!list.length) return '<option value="">No approved members in that club yet</option>';
+  return '<option value="">Select the member who invited you</option>'+
+    list.map(m => '<option value="'+esc(m.id)+'">'+esc(m.name)+
+      (m.company ? ' · '+esc(m.company) : '')+'</option>').join('');
+}
+function textFieldHTML(id, label, icon, opts){
+  const o = opts || {};
+  return '<div class="field"><label>'+esc(label)+'</label>'+
+    (icon ? '<span class="lead mi s20">'+icon+'</span>' : '')+
+    '<input class="inp'+(icon ? ' withicon' : '')+'" id="'+id+'"'+
+      (o.type ? ' type="'+o.type+'"' : '')+
+      (o.inputmode ? ' inputmode="'+o.inputmode+'"' : '')+
+      (o.max ? ' max="'+esc(o.max)+'"' : '')+
+      (o.autocomplete ? ' autocomplete="'+o.autocomplete+'"' : ' autocomplete="off"')+
+      (o.placeholder ? ' placeholder="'+esc(o.placeholder)+'"' : '')+'>'+
+    (o.help ? '<div class="help">'+esc(o.help)+'</div>' : '')+'</div>';
+}
+function areaFieldHTML(id, label, rows, placeholder){
+  return '<div class="field"><label>'+esc(label)+'</label>'+
+    '<textarea class="inp" id="'+id+'" rows="'+(rows||3)+'"'+
+    (placeholder ? ' placeholder="'+esc(placeholder)+'"' : '')+'></textarea></div>';
+}
+function selectFieldHTML(id, label, icon, optionsHTML, help){
+  return '<div class="field"><label>'+esc(label)+'</label>'+
+    (icon ? '<span class="lead mi s20">'+icon+'</span>' : '')+
+    '<select class="inp'+(icon ? ' withicon' : '')+'" id="'+id+'">'+optionsHTML+'</select>'+
+    (help ? '<div class="help">'+esc(help)+'</div>' : '')+'</div>';
+}
+
+function renderRegister(){
+  const club = S.selectedClub;
+  let h = '<div class="login-in">';
+  h += authHeadHTML('Member Registration',
+    'Fill in your details and choose a password. Your login is activated once your club president approves the application.');
+  h += '<div class="banner warn" style="text-align:left"><span class="mi s20">info</span>'+
+    '<div style="flex:1"><b>Already a member?</b><p>If you registered in the Android app, do not '+
+    'register again — go back and sign in with the same password.</p></div></div>';
+
+  h += selectFieldHTML('regClub','Your Club','groups',
+    clubOptionsHTML(club ? club.id : '', 'Select your club'));
+
+  h += '<div class="fieldlabel">Profile Photo</div>'+
+    photoFieldHTML('regPhoto','Optional. A clear headshot helps other members recognise you.');
+
+  h += textFieldHTML('regName','Full Name','person');
+  h += textFieldHTML('regPhone','Mobile Number','phone',{type:'tel',inputmode:'tel'});
+  h += textFieldHTML('regEmail','Email ID','mail',
+    {type:'email',inputmode:'email',help:'Compulsory — attendance reminders are sent here.'});
+  h += textFieldHTML('regCompany','Company / Firm Name','business');
+  h += selectFieldHTML('regVertical','Business Vertical','category', verticalOptionsHTML());
+  h += selectFieldHTML('regBlood','Blood Group','bloodtype',
+    BLOOD_GROUPS.map(b => '<option value="'+esc(b)+'"'+(b === 'Not known' ? ' selected' : '')+'>'+
+      esc(b)+'</option>').join(''));
+  h += textFieldHTML('regDob','Date of Birth',null,{type:'date',max:Dates.todayIso()});
+  h += textFieldHTML('regDoa','Marriage Date (optional)',null,{type:'date',max:Dates.todayIso()});
+  h += areaFieldHTML('regAddress','Address',3,'Door / street, area, town, pincode');
+
+  h += '<div class="divider"></div>';
+  h += '<div class="fieldlabel" style="font-size:15px;margin:4px 0 12px">Choose a Password</div>';
+  h += '<div class="field"><label>Create Password</label><span class="lead mi s20">lock</span>'+
+    '<input class="inp withicon" id="regPw" type="'+(AuthUI.showPw?'text':'password')+
+    '" autocomplete="new-password">'+
+    '<button type="button" class="pwtoggle" data-act="reg-showpw">'+
+    (AuthUI.showPw?'Hide':'Show')+'</button>'+
+    '<div class="help">At least 6 characters.</div></div>';
+  h += '<div class="field"><label>Confirm Password</label><span class="lead mi s20">lock</span>'+
+    '<input class="inp withicon" id="regPw2" type="'+(AuthUI.showPw?'text':'password')+
+    '" autocomplete="new-password"></div>';
+
+  h += '<div class="tickbox" id="regTermsBox">'+
+    '<input type="checkbox" id="regTerms">'+
+    '<div class="tx"><label for="regTerms">I have read and accept the</label> '+
+    '<a href="#" data-act="terms-view">Terms of Use</a>.'+
+    '<div class="help" style="margin-top:4px">Your name, business and contact details will be '+
+    'visible to members of your club and, through the network directory, to members of other '+
+    'Lions clubs.</div></div></div>';
+
+  h += '<button class="btn" data-act="register-submit">Save &amp; Submit for Approval</button>';
+  h += '<button class="btn ghost" style="margin-top:10px" data-act="auth-back">Back to Login</button>';
+  if(S.offline){
+    h += '<p style="margin-top:12px;font-size:12.5px;color:var(--red)">No connection. '+
+      'You need to be online to register.</p>';
+  }
+  h += '</div>';
+  $('#login').innerHTML = h;
+}
+
+function renderVisitor(){
+  const club = S.selectedClub;
+  let h = '<div class="login-in">';
+  h += authHeadHTML('Visitor Sign-in',
+    'Visited a Lions club meeting? Leave your details with the club that hosted you.');
+
+  h += selectFieldHTML('vClub','Club You Visited','groups',
+    clubOptionsHTML(club ? club.id : '', 'Select the club'));
+  h += selectFieldHTML('vInviter','Who Invited You','person_add',
+    inviterOptionsHTML(club ? club.id : ''));
+  h += textFieldHTML('vName','Visitor Name','person');
+  h += textFieldHTML('vPhone','Phone Number','phone',{type:'tel',inputmode:'tel'});
+  h += textFieldHTML('vEmail','Email (optional)','mail',{type:'email',inputmode:'email'});
+  h += textFieldHTML('vCompany','Business Name','business');
+  h += selectFieldHTML('vVertical','Business Vertical','category', verticalOptionsHTML());
+  h += areaFieldHTML('vAddress','Address',2,'Door / street, area, town, pincode');
+  h += areaFieldHTML('vNotes','Anything You Would Like to Add (optional)',3,
+    'What you thought of the meeting, what you are looking for…');
+
+  h += '<div class="tickbox on" id="vWillingBox">'+
+    '<input type="checkbox" id="vWilling" checked>'+
+    '<div class="tx"><label for="vWilling"><b>I am interested in joining the fellowship</b>'+
+    '<span class="help" style="display:block;margin-top:2px">Tick this and someone from the '+
+    'club will be in touch about membership.</span></label></div></div>';
+
+  h += '<button class="btn" data-act="visitor-submit">Submit My Details</button>';
+  h += '<button class="btn ghost" style="margin-top:10px" data-act="auth-back">Back to Login</button>';
+  if(S.offline){
+    h += '<p style="margin-top:12px;font-size:12.5px;color:var(--red)">No connection. '+
+      'You need to be online to submit this.</p>';
+  }
+  h += '</div>';
+  $('#login').innerHTML = h;
+}
+
 async function doLogin(){
   if(LoginUI.busy) return;
   const handle = LoginUI.handle || resolveTyped();
@@ -3127,7 +3342,9 @@ const ACTIONS = {
     catch(e){ reportError(e); }
   },
   async photo(el, d){
-    const uri = await pickPhoto(d.capture === '1', d.for === 'leavePhoto' ? 900 : 1000, 0.75);
+    const small = d.for === 'regPhoto';
+    const uri = await pickPhoto(d.capture === '1',
+      small ? 320 : (d.for === 'leavePhoto' ? 900 : 1000), small ? 0.82 : 0.75);
     if(!uri) return;
     const box = $('[data-photo="'+d.for+'"]');
     if(!box) return;
@@ -3199,6 +3416,118 @@ const ACTIONS = {
   'add-ty'(){ openSheet('Thank You Note', thankYouFormHTML()); },
   'add-ask'(){ openSheet('Post an Ask', askFormHTML()); },
   'add-give'(){ openSheet('Post a Give', giveFormHTML()); },
+
+  /* register / visitor */
+  'terms-view'(){ showTermsSheet(); },
+  'auth-register'(){ AuthUI.screen = 'register'; renderLogin(); $('#login').scrollTop = 0; },
+  'auth-visitor'(){ AuthUI.screen = 'visitor'; renderLogin(); $('#login').scrollTop = 0; },
+  'auth-back'(){ AuthUI.screen = 'login'; renderLogin(); $('#login').scrollTop = 0; },
+  'reg-showpw'(){
+    AuthUI.showPw = !AuthUI.showPw;
+    ['#regPw','#regPw2'].forEach(sel => {
+      const i = $(sel); if(i) i.type = AuthUI.showPw ? 'text' : 'password';
+    });
+    const b = $('[data-act="reg-showpw"]');
+    if(b) b.textContent = AuthUI.showPw ? 'Hide' : 'Show';
+  },
+  async 'register-submit'(el){
+    const clubId  = $('#regClub').value;
+    const name    = $('#regName').value.trim();
+    const phone   = $('#regPhone').value.trim();
+    const email   = $('#regEmail').value.trim();
+    const company = $('#regCompany').value.trim();
+    const vertical= $('#regVertical').value;
+    const blood   = $('#regBlood').value;
+    const dob     = $('#regDob').value;
+    const doa     = $('#regDoa').value;
+    const address = $('#regAddress').value.trim();
+    const pw      = $('#regPw').value;
+    const pw2     = $('#regPw2').value;
+
+    if(!clubId){ bad('Choose your club.'); return; }
+    if(!name){ bad('Enter your full name.'); return; }
+    if(!/^[0-9+\-\s()]{10,15}$/.test(phone)){ bad('Enter a valid mobile number.'); return; }
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(email)){
+      bad('Enter a valid email address — attendance reminders are sent there.'); return; }
+    if(!company){ bad('Enter your company or firm name.'); return; }
+    if(!vertical){ bad('Choose your business vertical.'); return; }
+    if(!dob){ bad('Enter your date of birth.'); return; }
+    if(doa && doa < dob){ bad('Marriage date cannot be earlier than the date of birth.'); return; }
+    if(!address){ bad('Enter your address.'); return; }
+    if(pw.length < 6){ bad('Password must be at least 6 characters.'); return; }
+    if(pw !== pw2){ bad('Password and confirmation do not match.'); return; }
+    if(!$('#regTerms').checked){
+      bad('Please read and accept the Terms of Use before registering.'); return; }
+    requireOnline();
+
+    const photo = photoValue('regPhoto');
+    await busy(el, async () => {
+      try{
+        const res = rpcResult(await rpc('register_member', {
+          p_club_id: clubId, p_accepted_terms: true, p_name: name, p_password: pw,
+          p_phone: phone, p_email: email, p_company: company, p_vertical: vertical,
+          p_blood_group: blood || null, p_birthday: dob, p_anniversary: doa || null,
+          p_address: address, p_photo: photo
+        }));
+        const c = S.clubs.find(x => x.id === clubId);
+        if(c){ S.selectedClub = c; localStorage.setItem('lbn.club', c.id); }
+        await loadLoginDirectory();
+        AuthUI.screen = 'login';
+        LoginUI.handle = null; LoginUI.typed = name;
+        renderLogin();
+        $('#login').scrollTop = 0;
+        await infoDlg(res.founding_president ? 'Registered as President' : 'Registered',
+          res.founding_president
+            ? 'You are the first member of this club, so you are its president and your login is '+
+              'active straight away. Pick your name above and sign in with the password you just chose.'
+            : 'Your application has been saved and is waiting for your club president to approve it. '+
+              'Once approved, pick your club and your name here and sign in with the password you just chose.');
+      }catch(e){ reportError(e); }
+    });
+  },
+  async 'visitor-submit'(el){
+    const clubId  = $('#vClub').value;
+    const inviter = $('#vInviter').value;
+    const name    = $('#vName').value.trim();
+    const phone   = $('#vPhone').value.trim();
+    const email   = $('#vEmail').value.trim();
+    const company = $('#vCompany').value.trim();
+    const vertical= $('#vVertical').value;
+    const address = $('#vAddress').value.trim();
+    const notes   = $('#vNotes').value.trim();
+    const willing = $('#vWilling').checked;
+
+    if(!clubId){ bad('Choose the club you visited.'); return; }
+    if(!inviter){ bad('Choose the member who invited you.'); return; }
+    if(!name){ bad('Enter your name.'); return; }
+    if(!/^[0-9+\-\s()]{10,15}$/.test(phone)){ bad('Enter a valid phone number.'); return; }
+    if(email && !/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(email)){
+      bad('That email address does not look right.'); return; }
+    if(!company){ bad('Enter your business name.'); return; }
+    if(!vertical){ bad('Choose your business vertical.'); return; }
+    if(!address){ bad('Enter your address.'); return; }
+    requireOnline();
+
+    const c = S.clubs.find(x => x.id === clubId);
+    const clubLabel = c ? c.name : 'the fellowship';
+    await busy(el, async () => {
+      try{
+        rpcResult(await rpc('register_visitor', {
+          p_name: name, p_phone: phone, p_address: address, p_invited_by_id: inviter,
+          p_company: company, p_vertical: vertical, p_willing: willing,
+          p_email: email || null, p_notes: notes || null
+        }));
+        AuthUI.screen = 'login';
+        renderLogin();
+        $('#login').scrollTop = 0;
+        await infoDlg('Thank you', willing
+          ? 'Your details have been recorded. Someone from '+clubLabel+
+            ' will be in touch about joining the fellowship.'
+          : 'Your details have been recorded. We hope you enjoyed visiting '+clubLabel+
+            ' and look forward to seeing you again.');
+      }catch(e){ reportError(e); }
+    });
+  },
 
   /* login */
   login(){ doLogin(); },
@@ -3289,6 +3618,16 @@ document.addEventListener('input', e => {
   }
 });
 document.addEventListener('change', async e => {
+  if(e.target.id === 'vClub'){
+    const sel = $('#vInviter');
+    if(sel) sel.innerHTML = inviterOptionsHTML(e.target.value);
+    return;
+  }
+  if(e.target.id === 'regTerms' || e.target.id === 'vWilling'){
+    const box = $(e.target.id === 'regTerms' ? '#regTermsBox' : '#vWillingBox');
+    if(box) box.classList.toggle('on', e.target.checked);
+    return;
+  }
   if(e.target.id === 'clubSelect'){
     const c = S.clubs.find(x => x.id === e.target.value) || null;
     S.selectedClub = c;
@@ -3302,6 +3641,10 @@ document.addEventListener('focusin', e => {
 });
 document.addEventListener('keydown', e => {
   if(e.key === 'Enter' && e.target.id === 'pwInput'){ e.preventDefault(); doLogin(); }
+  if(e.key === 'Enter' && e.target.id === 'regPw2'){
+    e.preventDefault();
+    const b = $('[data-act="register-submit"]'); if(b) b.click();
+  }
   if(e.key === 'Escape'){ closeSheet(); closeDrawer(); $('#lightbox').classList.remove('on'); }
 });
 
@@ -3317,6 +3660,7 @@ $('#btnLogout').addEventListener('click', async () => {
   closeDrawer();
   await signOut();
   LoginUI.handle = null; LoginUI.typed = ''; LoginUI.busy = false;
+  AuthUI.screen = 'login'; AuthUI.showPw = false;
   render();
 });
 $('#fab').addEventListener('click', openAddSheet);
@@ -3347,6 +3691,9 @@ window.addEventListener('popstate', () => {
   history.pushState({lbn:1}, '');
   if(sheetOpen()){ closeSheet(); return; }
   if($('#drawer').classList.contains('on')){ closeDrawer(); return; }
+  if(!signedIn() && AuthUI.screen !== 'login'){
+    AuthUI.screen = 'login'; renderLogin(); $('#login').scrollTop = 0; return;
+  }
   if(signedIn() && S.tab !== 'Dashboard'){ go('Dashboard'); }
 });
 history.pushState({lbn:1}, '');
@@ -3359,9 +3706,15 @@ document.addEventListener('visibilitychange', async () => {
   }
 });
 window.addEventListener('online',  async () => {
-  if(signedIn()){ await refresh(); render(); } else { await loadLoginDirectory(); renderLogin(); }
+  if(signedIn()){ await refresh(); render(); return; }
+  await loadLoginDirectory();
+  /* never repaint a part-filled registration form under the member */
+  if(AuthUI.screen === 'login') renderLogin();
 });
-window.addEventListener('offline', () => { S.offline = true; render(); });
+window.addEventListener('offline', () => {
+  S.offline = true;
+  if(signedIn() || AuthUI.screen === 'login') render();
+});
 
 /* installable on Android; iOS uses Add to Home Screen */
 (function(){
