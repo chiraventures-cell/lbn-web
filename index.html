@@ -761,9 +761,13 @@ const canAppoint  = r => r === 'admin' || r === 'president' || r === 'ipp';
 const isApproved  = m => m.status === 'approved' && m.isActive;
 const ROLE_TAGS = { admin:'Administrator', president:'President', ipp:'Immediate Past President',
   vp:'Vice President', secretary:'Secretary', ac:'Attendance Coordinator',
-  rc:'Referral Coordinator', l2c:'L2L Coordinator', ard:'Application Review Director' };
+  rc:'Referral Coordinator', l2c:'L2L Coordinator', ard:'Application Review Director',
+  treasurer:'Treasurer', gd:'Chapter Growth Director' };
 const ROLE_SHORT = { admin:'Admin', president:'President', ipp:'Past President', vp:'Vice President',
-  secretary:'Secretary', ac:'Attendance', rc:'Referral', l2c:'L2L', ard:'App Review' };
+  secretary:'Secretary', ac:'Attendance', rc:'Referral', l2c:'L2L', ard:'App Review',
+  treasurer:'Treasurer', gd:'Growth' };
+const OFFICE_ROLES = ['president','ipp','vp','secretary','treasurer',
+  'ac','rc','l2c','ard','gd'];
 const roleTag      = m => (m && ROLE_TAGS[m.role]) || null;
 const roleTagShort = m => (m && ROLE_SHORT[m.role]) || null;
 function initials(name){
@@ -853,6 +857,10 @@ function mapGive(m){
     status: m.status == null ? 'open' : S_(m.status), createdAt:S_(m.created_at),
     get code(){ return shortCode('G', this.id); } };
 }
+function mapMinute(m){
+  return { id:S_(m.id), meetingDate:DATE_(m.meeting_date), title:S_(m.title),
+    details:S_(m.details), createdById:S_(m.created_by_id), createdAt:S_(m.created_at) };
+}
 function mapVisitor(m){
   return { id:S_(m.id), name:S_(m.name), phone:S_(m.phone), address:S_(m.address),
     company:S_(m.company), vertical:S_(m.vertical), invitedByName:S_(m.invited_by_name),
@@ -902,6 +910,7 @@ const S = {
   megaDirectory:[], subscription:{loaded:false, plan:'trial', daysLeft:0, expired:false,
     clubName:'', memberCount:0, pricePerMember:59, monthlyTotal:0},
   access:{}, attendance:[], meetings2:[], leaveRequests:[], visitors:[],
+  minutes:[],
   ledger:[], accountTerms:[], balances:{openingCash:0,openingBank:0,incomeCash:0,
     incomeBank:0,expenseCash:0,expenseBank:0},
   loading:false, offline:false, syncedAt:null, tab:'Dashboard', tabState:{}
@@ -914,6 +923,10 @@ const isPresident = () => !!S.me && (S.me.role === 'president' || S.me.role === 
 const canAppointBearers = () => !!S.me && canAppoint(S.me.role);
 const canViewAccounts = () => !!S.me && (isAdmin() ||
   ['secretary','ard','ac','rc','l2c'].indexOf(S.me.role) >= 0);
+const isOfficeBearer = () => !!S.me &&
+  (S.me.role === 'admin' || OFFICE_ROLES.indexOf(S.me.role) >= 0);
+const canKeepMinutes = () => !!S.me &&
+  ['admin','secretary','president','ipp'].indexOf(S.me.role) >= 0;
 const clubBlocked = () => S.access && S.access.blocked === true;
 
 function clubName(){
@@ -1216,6 +1229,27 @@ async function loadBalances(){
   }
 }
 
+async function postMinutes(o){
+  requireOnline();
+  const { error } = await sb.from('board_minutes').insert({
+    meeting_date: o.dateIso, title: o.title || '', details: o.details,
+    created_by_id: S.me.id
+  });
+  if(error) throw new AppError(error.message);
+  await loadMinutes();
+}
+async function deleteMinutes(id){
+  requireOnline();
+  const { error } = await sb.from('board_minutes').delete().eq('id', id);
+  if(error) throw new AppError(error.message);
+  await loadMinutes();
+}
+async function loadMinutes(){
+  if(!isOfficeBearer()){ S.minutes = []; return; }
+  try{ S.minutes = (await table('board_minutes')).map(mapMinute); }
+  catch(_){ S.minutes = []; }
+}
+
 async function refresh(){
   S.loading = true;
   paintChrome();
@@ -1239,6 +1273,7 @@ async function refresh(){
       S.visitors = (await table('visitors')).map(mapVisitor)
         .sort((a,b) => b.createdAt.localeCompare(a.createdAt));
     }catch(_){ S.visitors = []; }
+    await loadMinutes();
 
     await loadSubscription();
     await loadAccess();
@@ -1625,6 +1660,9 @@ function destinations(){
     {label:'Celebrations',   icon:'cake'},
     {label:'My Profile',     icon:'person'}
   ];
+  if(isOfficeBearer()){
+    list.splice(6, 0, {label:'Board Minutes', icon:'gavel'});
+  }
   return list;
 }
 function go(label){
@@ -2048,6 +2086,65 @@ function photoFieldHTML(id, hint){
 function photoValue(id){
   const box = $('[data-photo="'+id+'"]');
   return box ? ($('[data-photo-value]', box).value || null) : null;
+}
+
+/* ==========================================================================
+   Board minutes — the secretary keeps them, every office bearer may read
+   ========================================================================== */
+function viewMinutes(){
+  const can = canKeepMinutes();
+  let h = '<div class="page">';
+
+  if(can){
+    h += sectionHTML('Record Board Minutes',
+      '<div id="minutesForm">'+
+      '<div class="field"><label>Meeting Date</label>'+
+      '<input class="inp" id="minDate" type="date" max="'+Dates.todayIso()+
+        '" value="'+Dates.todayIso()+'"></div>'+
+      '<div class="field"><label>Subject</label><span class="lead mi s20">title</span>'+
+      '<input class="inp withicon" id="minTitle" autocomplete="off" '+
+        'placeholder="e.g. Monthly board meeting"></div>'+
+      '<div class="field"><label>Minutes</label>'+
+      '<textarea class="inp" id="minDetails" rows="8" placeholder="Decisions taken, '+
+        'who is doing what, and by when."></textarea></div>'+
+      '<button class="btn" data-act="minutes-submit">Save Minutes</button></div>',
+      {hint:'Visible to office bearers'});
+  }
+
+  const list = S.minutes.slice().sort((a,b) =>
+    b.meetingDate.localeCompare(a.meetingDate) || b.createdAt.localeCompare(a.createdAt));
+
+  if(!list.length){
+    h += emptyHTML('gavel', 'No board minutes yet', can
+      ? 'Record the first board meeting using the form above.'
+      : 'The secretary has not posted any board minutes yet.');
+  }else{
+    h += '<div class="centre" style="font-size:12px;color:var(--muted);margin:4px 0 12px">'+
+      list.length+' '+plural(list.length,'meeting')+' on record</div>';
+    h += list.map(m => minutesCardHTML(m, can)).join('');
+  }
+
+  h += '</div>';
+  return h;
+}
+
+function minutesCardHTML(m, can){
+  const who = m.createdById ? nameOf(m.createdById) : '';
+  return '<div class="card pad">'+
+    '<div style="display:flex;gap:10px;align-items:flex-start">'+
+    '<span class="mi s20" style="color:var(--gold)">gavel</span>'+
+    '<div style="flex:1;min-width:0">'+
+    '<div style="font-size:15px;font-weight:800;color:var(--blue)">'+
+      esc(m.title || 'Board Meeting')+'</div>'+
+    '<div style="font-size:12px;color:var(--muted);margin-top:2px">'+
+      esc(Dates.display(m.meetingDate))+
+      (who ? ' · minuted by '+esc(who) : '')+'</div></div>'+
+    (can ? '<button class="btn link" style="color:var(--red);padding:2px 4px;flex:none" '+
+      'data-act="minutes-delete" data-id="'+esc(m.id)+'" aria-label="Delete">'+
+      '<span class="mi s18">delete</span></button>' : '')+
+    '</div>'+
+    '<div style="margin-top:11px;font-size:13.5px;line-height:1.6;white-space:pre-wrap">'+
+      esc(m.details)+'</div></div>';
 }
 
 /* ---------------------------- Directory ---------------------------- */
@@ -3062,6 +3159,7 @@ function render(){
     case 'Mega Directory': body = viewMegaDirectory(); break;
     case 'My Attendance':  body = viewAttendance(); break;
     case 'Celebrations':   body = viewCelebrations(); break;
+    case 'Board Minutes':  body = viewMinutes(); break;
     case 'My Profile':     body = viewProfile(); break;
     default:               body = viewDashboard();
   }
@@ -3527,6 +3625,30 @@ const ACTIONS = {
             ' and look forward to seeing you again.');
       }catch(e){ reportError(e); }
     });
+  },
+
+  /* board minutes */
+  async 'minutes-submit'(el){
+    const dateIso = $('#minDate').value || Dates.todayIso();
+    const title   = $('#minTitle').value.trim();
+    const details = $('#minDetails').value.trim();
+    if(details.length < 10){ bad('Write the minutes before saving.'); return; }
+    if(dateIso > Dates.todayIso()){ bad('The meeting date cannot be in the future.'); return; }
+    requireOnline();
+    await busy(el, async () => {
+      try{
+        await postMinutes({dateIso, title, details});
+        render();
+        ok('Minutes saved.');
+      }catch(e){ reportError(e); }
+    });
+  },
+  async 'minutes-delete'(el, d){
+    if(!await confirmDlg('Delete these minutes?',
+      'They will be removed for every office bearer. This cannot be undone.',
+      'Delete', true)) return;
+    try{ await deleteMinutes(d.id); render(); ok('Minutes deleted.'); }
+    catch(e){ reportError(e); }
   },
 
   /* login */
