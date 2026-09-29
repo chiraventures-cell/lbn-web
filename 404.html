@@ -1329,7 +1329,7 @@ async function logMeeting(o){
   const { error } = await sb.from('l2l_meetings').insert({
     member_a_id: S.me.id, member_b_id: o.withMemberId, meeting_date: o.dateIso,
     location: o.location.trim(), benefit: o.benefit.trim(), photo_url: o.photoDataUri || null,
-    posted_by_id: S.me.id, accepted: true, accepted_at: new Date().toISOString()
+    posted_by_id: S.me.id
   });
   if(error) throw new AppError(error.message);
   await refresh();
